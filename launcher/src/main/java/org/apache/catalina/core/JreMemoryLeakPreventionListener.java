@@ -366,7 +366,7 @@ public class JreMemoryLeakPreventionListener implements LifecycleListener {
                  */
                 if (securityLoginConfigurationProtection && !JreCompat.isJre8Available()) {
                     try {
-                        Class.forName("javax.security.auth.login.Configuration", true, ClassLoader.getSystemClassLoader());
+                        Class.forName("javax.security.auth.login.Configuration", true, loader);
                     } catch(ClassNotFoundException e) {
                         // Ignore
                     }
