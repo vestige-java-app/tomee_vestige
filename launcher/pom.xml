@@ -118,9 +118,19 @@
       <version>${tomcat.version}</version>
     </dependency>
     <dependency>
+      <groupId>org.apache.tomcat</groupId>
+      <artifactId>tomcat-catalina-ha</artifactId>
+      <version>${tomcat.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.tomee</groupId>
+      <artifactId>tomee-webapp</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>org.apache.tomee</groupId>
       <artifactId>tomee-catalina</artifactId>
-      <version>7.0.4</version>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>fr.gaellalire.vestige</groupId>

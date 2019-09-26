@@ -26,6 +26,7 @@ import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
 import org.apache.tomcat.util.log.SystemLogHandler;
 import org.apache.tomcat.util.modeler.BaseModelMBean;
 import org.apache.tomcat.util.modeler.Registry;
+import org.apache.tomee.catalina.TomEEClassLoaderEnricher;
 
 import com.sun.xml.bind.v2.bytecode.ClassTailor;
 
@@ -84,6 +85,7 @@ public class TomEEVestigeLauncher implements Runnable {
             declaredField.setAccessible(false);
         } catch (Exception e) {
         }
+        System.setProperty(TomEEClassLoaderEnricher.TOMEE_WEBAPP_CLASSLOADER_ENRICHMENT_SKIP, "true");
         System.setProperty(Globals.CATALINA_BASE_PROP, base.getPath());
         System.setProperty(Globals.CATALINA_HOME_PROP, base.getPath());
         System.setProperty(ClassTailor.class.getName()+".noOptimize", "true");
