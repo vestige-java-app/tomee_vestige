@@ -9,6 +9,7 @@ import java.security.Permissions;
 import java.security.Policy;
 import java.security.ProtectionDomain;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,10 @@ import org.apache.catalina.Globals;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.startup.Catalina;
 import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
+import org.apache.openejb.core.security.AbstractSecurityService;
+import org.apache.openejb.loader.Files;
+import org.apache.openejb.monitoring.LocalMBeanServer;
+import org.apache.openejb.resource.GeronimoTransactionManagerFactory;
 import org.apache.tomcat.util.log.SystemLogHandler;
 import org.apache.tomcat.util.modeler.BaseModelMBean;
 import org.apache.tomcat.util.modeler.Registry;
@@ -74,6 +79,7 @@ public class TomEEVestigeLauncher implements Runnable {
 
             });
         }
+        AbstractSecurityService.vestigeSystem = vestigeSystem;
     }
 
     public TomEEVestigeLauncher(final File base, final File data) {
@@ -129,18 +135,27 @@ public class TomEEVestigeLauncher implements Runnable {
             if (started) {
                 catalina.stop();
             }
-            List<ObjectName> toRemove = new ArrayList<ObjectName>();
-            MBeanServer mBeanServer = Registry.getRegistry(null, null).getMBeanServer();
-            for (ObjectInstance o : mBeanServer.queryMBeans(null, null)) {
-                if (o.getClassName().equals(BaseModelMBean.class.getName())) {
-                    toRemove.add(o.getObjectName());
+            Files.delete();
+
+            List<MBeanServer> mBeanServers = Arrays.asList(Registry.getRegistry(null, null).getMBeanServer(), LocalMBeanServer.get());
+
+            for (MBeanServer mBeanServer : mBeanServers) {
+                List<ObjectName> toRemove = new ArrayList<ObjectName>();
+
+                for (ObjectInstance o : mBeanServer.queryMBeans(null, null)) {
+                    if (o.getClassName().equals(BaseModelMBean.class.getName())) {
+                        toRemove.add(o.getObjectName());
+                    }
+                    if (o.getClassName().equals(GeronimoTransactionManagerFactory.TransactionManagerMBean.class.getName())) {
+                        toRemove.add(o.getObjectName());
+                    }
                 }
-            }
-            for (ObjectName name : toRemove) {
-                try {
-                    mBeanServer.unregisterMBean(name);
-                } catch (Exception e1) {
-                    e1.printStackTrace();
+                for (ObjectName name : toRemove) {
+                    try {
+                        mBeanServer.unregisterMBean(name);
+                    } catch (Exception e1) {
+                        e1.printStackTrace();
+                    }
                 }
             }
 
