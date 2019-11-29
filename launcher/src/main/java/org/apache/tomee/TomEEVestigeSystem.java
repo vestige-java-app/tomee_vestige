@@ -21,4 +21,6 @@ public interface TomEEVestigeSystem {
 
     void setPolicy(Policy policy);
 
+    Policy getPolicy();
+
 }

@@ -25,6 +25,7 @@ import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.startup.Catalina;
 import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
 import org.apache.openejb.core.security.AbstractSecurityService;
+import org.apache.openejb.core.security.jacc.BasicJaccProvider;
 import org.apache.openejb.loader.Files;
 import org.apache.openejb.monitoring.LocalMBeanServer;
 import org.apache.openejb.resource.GeronimoTransactionManagerFactory;
@@ -80,6 +81,7 @@ public class TomEEVestigeLauncher implements Runnable {
             });
         }
         AbstractSecurityService.vestigeSystem = vestigeSystem;
+        BasicJaccProvider.vestigeSystem = vestigeSystem;
     }
 
     public TomEEVestigeLauncher(final File base, final File data) {
