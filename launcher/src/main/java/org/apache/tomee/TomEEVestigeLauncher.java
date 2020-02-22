@@ -24,6 +24,7 @@ import org.apache.catalina.Globals;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.startup.Catalina;
 import org.apache.catalina.webresources.TomcatURLStreamHandlerFactory;
+import org.apache.geronimo.transaction.manager.TransactionTimer;
 import org.apache.openejb.core.security.AbstractSecurityService;
 import org.apache.openejb.core.security.jacc.BasicJaccProvider;
 import org.apache.openejb.loader.Files;
@@ -44,8 +45,10 @@ import fr.gaellalire.vestige.spi.resolver.maven.VestigeMavenResolver;
 public class TomEEVestigeLauncher implements Runnable {
 
     private static final Logger LOGGER = Logger.getLogger(TomEEVestigeLauncher.class.getName());
-    
+
     private VestigeMavenResolver mavenResolver;
+
+    private File data;
 
     public void setMavenResolver(final VestigeMavenResolver mavenResolver) {
         this.mavenResolver = mavenResolver;
@@ -84,7 +87,9 @@ public class TomEEVestigeLauncher implements Runnable {
         BasicJaccProvider.vestigeSystem = vestigeSystem;
     }
 
+
     public TomEEVestigeLauncher(final File base, final File data) {
+        this.data = data;
         // avoid call to URL.setURLStreamHandlerFactory
         try {
             Field declaredField = WebappLoader.class.getDeclaredField("first");
@@ -93,6 +98,8 @@ public class TomEEVestigeLauncher implements Runnable {
             declaredField.setAccessible(false);
         } catch (Exception e) {
         }
+        System.setProperty("tomee.serialization.class.blacklist", "-");
+
         System.setProperty(TomEEClassLoaderEnricher.TOMEE_WEBAPP_CLASSLOADER_ENRICHMENT_SKIP, "true");
         System.setProperty(Globals.CATALINA_BASE_PROP, base.getPath());
         System.setProperty(Globals.CATALINA_HOME_PROP, base.getPath());
@@ -101,8 +108,12 @@ public class TomEEVestigeLauncher implements Runnable {
 
     private volatile boolean started = false;
 
+    @SuppressWarnings("deprecation")
     public void run() {
-        VestigeWar.init(mavenResolver);
+        File unpackDir = new File(data, "unpackDir");
+        unpackDir.mkdirs();
+        VestigeWar.init(mavenResolver, unpackDir);
+        VestigeEar.init(mavenResolver);
 
         final Catalina catalina = new Catalina() {
             @Override
@@ -179,6 +190,21 @@ public class TomEEVestigeLauncher implements Runnable {
                     if (t == currentThread) {
                         continue;
                     }
+
+                    // TransactionTimer.CurrentTime hack
+                    Class<?> currentTimeClass;
+                    try {
+                        currentTimeClass = Class.forName(TransactionTimer.class.getName() + "$CurrentTime");
+                        if (currentTimeClass.isInstance(t)) {
+                            // this class has no shutdown mecanism, and is
+                            // catching InterruptedException
+                            t.stop();
+                            LOGGER.log(Level.INFO, "stop called ");
+                        }
+                    } catch (ClassNotFoundException e2) {
+                        LOGGER.log(Level.FINE, "ClassNotFoundException", e2);
+                    }
+
                     try {
                         t.join();
                     } catch (InterruptedException e1) {

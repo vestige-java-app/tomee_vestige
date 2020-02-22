@@ -214,6 +214,7 @@ public class HostConfig implements LifecycleListener {
 
     private boolean isDeployThisXML(File docBase, ContextName cn) {
         boolean deployThisXML = isDeployXML();
+
         if (Globals.IS_SECURITY_ENABLED && !deployThisXML) {
             // When running under a SecurityManager, deployXML may be overridden
             // on a per Context basis by the granting of a specific permission

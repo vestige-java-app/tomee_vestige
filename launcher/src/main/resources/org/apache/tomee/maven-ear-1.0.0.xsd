@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" xmlns:tns="http://gaellalire.fr/MAVEN_EAR" xmlns="http://gaellalire.fr/MAVEN_EAR"
+  targetNamespace="http://gaellalire.fr/MAVEN_EAR" version="1.0.0">
+  <xs:element name="mavenEAR" type="MavenEAR">
+    <xs:annotation>
+      <xs:documentation source="version">1.0.0</xs:documentation>
+      <xs:documentation source="description">
+        Root element of the user
+        configuration file.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+
+
+  <xs:complexType name="MavenEAR">
+    <xs:sequence>
+      <xs:element name="bundleMapping" type="BundleMapping" minOccurs="0" maxOccurs="unbounded" />
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="BundleMapping">
+    <xs:sequence>
+      <xs:element name="bundleFileName" type="xs:string" />
+      <xs:element name="groupId" type="xs:string" />
+      <xs:element name="artifactId" type="xs:string" />
+    </xs:sequence>
+  </xs:complexType>
+
+</xs:schema>

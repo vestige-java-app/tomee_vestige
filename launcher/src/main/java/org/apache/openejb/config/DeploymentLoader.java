@@ -87,12 +87,17 @@ import org.apache.openejb.util.JavaSecurityManagers;
 import org.apache.openejb.util.LogCategory;
 import org.apache.openejb.util.Logger;
 import org.apache.openejb.util.URLs;
+import org.apache.tomee.VestigeEar;
+import org.apache.tomee.VestigeWar;
 import org.apache.xbean.finder.IAnnotationFinder;
 import org.apache.xbean.finder.ResourceFinder;
 import org.apache.xbean.finder.UrlSet;
 import org.apache.xbean.finder.archive.ClassesArchive;
 import org.apache.xbean.finder.filter.Filter;
 import org.apache.xbean.finder.filter.Filters;
+
+import fr.gaellalire.vestige.spi.resolver.VestigeJar;
+import fr.gaellalire.vestige.spi.resolver.VestigeJarEntry;
 
 /**
  * @version $Revision$ $Date$
@@ -148,7 +153,13 @@ public class DeploymentLoader implements DeploymentFilterable {
 
             try {
                 doNotUseClassLoader = ClassLoaderUtil.createClassLoader(jarPath, new URL[]{baseUrl}, getOpenEJBClassLoader());
-                moduleClass = discoverModuleType(baseUrl, ClassLoaderUtil.createTempClassLoader(doNotUseClassLoader), true);
+                if (jarFile.getName().endsWith(".vear")) {
+                    moduleClass = AppModule.class;
+                } else if (jarFile.getName().endsWith(".vwar")) {
+                    moduleClass = WebModule.class;
+                } else {
+                    moduleClass = discoverModuleType(baseUrl, ClassLoaderUtil.createTempClassLoader(doNotUseClassLoader), true);
+                }
             } catch (final Exception e) {
                 throw new UnknownModuleTypeException("Unable to determine module type for jar: " + baseUrl.toExternalForm(), e);
             }
@@ -378,20 +389,91 @@ public class DeploymentLoader implements DeploymentFilterable {
     }
 
     protected AppModule createAppModule(final File jarFile, final String jarPath) throws OpenEJBException {
-        File appDir = unpack(jarFile);
-        try {
-            appDir = appDir.getCanonicalFile();
-        } catch (final IOException e) {
-            throw new OpenEJBException("Invalid application directory " + appDir.getAbsolutePath());
+        final URL applicationXmlUrl;
+        final Application application;
+        final ResourceFinder finder;
+        final URL appUrl;
+        final String appId;
+        File appDir = null;
+        final Map<String, URL> appDescriptors;
+        Properties vestigeEARProperties = new Properties();
+        final ClassLoader tmpClassLoader;
+        boolean applicationFound = false;
+
+        if (jarFile.getName().endsWith(".vear")) {
+            try {
+                final VestigeEar vestigeEar = VestigeEar.create(jarFile);
+
+                VestigeJar vestigeEarJar = vestigeEar.getVestigeJar();
+
+                URL baseURL = new URL("jar", "", -1, vestigeEarJar.getFile().toURI().getPath() + "!/");
+                VestigeJarEntry appXML = vestigeEarJar.getEntry("META-INF/application.xml");
+                if (appXML != null) {
+                    application = ApplicationXml.unmarshal(appXML.open());
+                    applicationFound = true;
+                } else {
+                    application = new Application();
+                }
+
+                VestigeJarEntry vestigeEAREntry = vestigeEarJar.getEntry("META-INF/maven-ear.xml");
+                if (vestigeEAREntry != null) {
+                    vestigeEARProperties.load(vestigeEAREntry.open());
+                }
+
+                appDescriptors = new HashMap<String, URL>();
+
+                for (String descriptor : KNOWN_DESCRIPTORS) {
+                    VestigeJarEntry entry = vestigeEarJar.getEntry("META-INF/" + descriptor);
+                    if (entry != null) {
+                        String name = entry.getName();
+                        URL url = new URL(baseURL, name);
+                        appDescriptors.put(name, url);
+                    }
+                }
+
+                File file = vestigeEarJar.getFile();
+                appUrl = file.toURI().toURL();
+                appId = file.getAbsolutePath();
+
+                applicationXmlUrl = null;
+                finder = new ResourceFinder() {
+                    @Override
+                    public URL find(final String uri) throws IOException {
+                        return vestigeEar.getURL(uri);
+                    }
+                };
+                tmpClassLoader = null;
+
+            } catch (Exception e) {
+                throw new OpenEJBException(e);
+            }
+
+        } else {
+            appDir = unpack(jarFile);
+            try {
+                appDir = appDir.getCanonicalFile();
+            } catch (final IOException e) {
+                throw new OpenEJBException("Invalid application directory " + appDir.getAbsolutePath());
+            }
+            appUrl = getFileUrl(appDir);
+            appId = appDir.getAbsolutePath();
+
+            tmpClassLoader = ClassLoaderUtil.createTempClassLoader(appId, new URL[] {appUrl}, getOpenEJBClassLoader());
+
+            finder = new ResourceFinder("", tmpClassLoader, appUrl);
+            appDescriptors = getDescriptors(finder);
+            applicationXmlUrl = appDescriptors.get("application.xml");
+
+            if (applicationXmlUrl != null) {
+                application = unmarshal(applicationXmlUrl);
+                applicationFound = true;
+            } else {
+                application = new Application();
+            }
+
         }
 
-        final URL appUrl = getFileUrl(appDir);
 
-        final String appId = appDir.getAbsolutePath();
-        final ClassLoader tmpClassLoader = ClassLoaderUtil.createTempClassLoader(appId, new URL[]{appUrl}, getOpenEJBClassLoader());
-
-        final ResourceFinder finder = new ResourceFinder("", tmpClassLoader, appUrl);
-        final Map<String, URL> appDescriptors = getDescriptors(finder);
 
         try {
 
@@ -405,13 +487,10 @@ public class DeploymentLoader implements DeploymentFilterable {
             final Map<String, URL> webModules = new LinkedHashMap<String, URL>();
             final Map<String, String> webContextRoots = new LinkedHashMap<String, String>();
 
-            final URL applicationXmlUrl = appDescriptors.get("application.xml");
             final List<URL> extraLibs = new ArrayList<URL>();
 
-            final Application application;
-            if (applicationXmlUrl != null) {
+            if (applicationFound) {
 
-                application = unmarshal(applicationXmlUrl);
                 for (final Module module : application.getModule()) {
                     try {
                         if (module.getEjb() != null) {
@@ -434,7 +513,6 @@ public class DeploymentLoader implements DeploymentFilterable {
                     }
                 }
             } else {
-                application = new Application();
                 final HashMap<String, URL> files = new HashMap<String, URL>();
                 scanDir(appDir, files, "", false);
                 files.remove("META-INF/MANIFEST.MF");
@@ -450,8 +528,8 @@ public class DeploymentLoader implements DeploymentFilterable {
                 for (final URL url : configurer.additionalURLs()) {
                     try {
                         detectAndAddModuleToApplication(appId, tmpClassLoader,
-                            ejbModules, clientModules, resouceModules, webModules,
-                            new ImmutablePair<>(URLs.toFile(url).getAbsolutePath(), url));
+                                ejbModules, clientModules, resouceModules, webModules,
+                                new ImmutablePair<>(URLs.toFile(url).getAbsolutePath(), url));
                     } catch (final Exception e) {
                         jarsXmlLib.add(url);
                     }
@@ -753,7 +831,7 @@ public class DeploymentLoader implements DeploymentFilterable {
             }
         }
 
-//        if (mainClass == null) throw new IllegalStateException("No Main-Class defined in META-INF/MANIFEST.MF file");
+        //        if (mainClass == null) throw new IllegalStateException("No Main-Class defined in META-INF/MANIFEST.MF file");
 
         final Map<String, URL> descriptors = getDescriptors(clientFinder, log);
 
@@ -937,13 +1015,51 @@ public class DeploymentLoader implements DeploymentFilterable {
     }
 
     public WebModule createWebModule(final String appId, final String warPath, final ClassLoader parentClassLoader, final String contextRoot, final String moduleName, final ExternalConfiguration config) throws OpenEJBException {
+        final Map<String, URL[]> urls;
         File warFile = new File(warPath);
-        if (!warFile.isDirectory()) {
-            warFile = unpack(warFile);
+        if (warFile.getName().endsWith(".vwar")) {
+            try {
+                final VestigeWar vestigeEar = VestigeWar.create(warFile, warFile.getName());
+
+                VestigeJar vestigeWarJar = vestigeEar.getVestigeWar();
+
+                warFile = unpack(vestigeWarJar.getFile(), warFile.getName(), VestigeWar.getUnpackDir());
+
+                final Set<URL> webClassPath = new HashSet<URL>();
+                final Set<URL> webRars = new HashSet<URL>();
+
+                webClassPath.add(new File(new File(warFile, "WEB-INF"), "classes").toURI().toURL());
+
+                List<? extends VestigeJar> vestigeWarDependencies = vestigeEar.getVestigeWarDependencies();
+                for (VestigeJar vestigeJar : vestigeWarDependencies) {
+                    if (vestigeJar.getName().endsWith(".rar")) {
+                        webRars.add(vestigeJar.getFile().toURI().toURL());
+                    } else {
+                        webClassPath.add(vestigeJar.getFile().toURI().toURL());
+                    }
+                }
+
+                final WebAppEnricher enricher = SystemInstance.get().getComponent(WebAppEnricher.class);
+                if (enricher != null) {
+                    webClassPath.addAll(Arrays.asList(enricher.enrichment(null)));
+                }
+
+                urls = new HashMap<String, URL[]>();
+                urls.put(URLS_KEY, webClassPath.toArray(new URL[webClassPath.size()]));
+                urls.put(RAR_URLS_KEY, webRars.toArray(new URL[webRars.size()]));
+            } catch (Exception e) {
+                throw new OpenEJBException(e);
+            }
+        } else {
+            if (!warFile.isDirectory()) {
+                warFile = unpack(warFile);
+            }
+
+            urls = getWebappUrlsAndRars(warFile);
         }
 
-        // read web.xml file
         final Map<String, URL> descriptors;
+        // read web.xml file
         try {
             descriptors = getWebDescriptors(warFile);
         } catch (final IOException e) {
@@ -985,7 +1101,6 @@ public class DeploymentLoader implements DeploymentFilterable {
             webUrls.addAll(externalUrls);
         }
 
-        final Map<String, URL[]> urls = getWebappUrlsAndRars(warFile);
         webUrls.addAll(Arrays.asList(urls.get(URLS_KEY)));
 
         final List<URL> addedUrls = new ArrayList<URL>();
@@ -1020,9 +1135,11 @@ public class DeploymentLoader implements DeploymentFilterable {
             }
         }
 
-        final ClassLoaderConfigurer configurer = QuickJarsTxtParser.parse(new File(warFile, "WEB-INF/" + QuickJarsTxtParser.FILE_NAME));
-        if (configurer != null) {
-            ClassLoaderConfigurer.Helper.configure(webUrls, configurer);
+        if (warFile.isDirectory()) {
+            final ClassLoaderConfigurer configurer = QuickJarsTxtParser.parse(new File(warFile, "WEB-INF/" + QuickJarsTxtParser.FILE_NAME));
+            if (configurer != null) {
+                ClassLoaderConfigurer.Helper.configure(webUrls, configurer);
+            }
         }
 
         final URL[] webUrlsArray = webUrls.toArray(new URL[webUrls.size()]);
@@ -1119,7 +1236,7 @@ public class DeploymentLoader implements DeploymentFilterable {
                                         || name.startsWith("commons-jcs-")
                                         || name.startsWith("xx-arquillian-tomee")
                                         || ("lib".equals(name) && file.isDirectory() &&
-                                            new File(JavaSecurityManagers.getSystemProperty("openejb.base", "-")).equals(file.getParentFile()))) {
+                                                new File(JavaSecurityManagers.getSystemProperty("openejb.base", "-")).equals(file.getParentFile()))) {
                                     it.remove();
                                 }
                             }
@@ -1702,7 +1819,7 @@ public class DeploymentLoader implements DeploymentFilterable {
     }
 
     public static Map<String, URL> mapDescriptors(final ResourceFinder finder)
-        throws IOException {
+            throws IOException {
         final Map<String, URL> map = finder.getResourcesMap(ddDir);
 
         if (map.size() == 0) {
@@ -1783,7 +1900,7 @@ public class DeploymentLoader implements DeploymentFilterable {
                 for (final JarEntry entry : Collections.list(jarFile.entries())) {
                     final String entryName = entry.getName();
                     if (!entry.isDirectory() && entryName.startsWith("WEB-INF/")
-                        && (KNOWN_DESCRIPTORS.contains(entryName.substring("WEB-INF/".length())) || entryName.endsWith(".xml"))) { // + web.xml, web-fragment.xml...
+                            && (KNOWN_DESCRIPTORS.contains(entryName.substring("WEB-INF/".length())) || entryName.endsWith(".xml"))) { // + web.xml, web-fragment.xml...
                         descriptors.put(entryName, new URL(jarURL, entry.getName()));
                     }
                 }
@@ -1944,7 +2061,7 @@ public class DeploymentLoader implements DeploymentFilterable {
         if (baseUrl != null) {
             final Map<String, URL> webDescriptors = getWebDescriptors(getFile(baseUrl));
             if (webDescriptors.containsKey("web.xml") || webDescriptors.containsKey(WEB_FRAGMENT_XML) // descriptor
-                || path.endsWith(".war") || new File(path, "WEB-INF").exists()) { // webapp specific files
+                    || path.endsWith(".war") || new File(path, "WEB-INF").exists()) { // webapp specific files
                 return WebModule.class;
             }
         }
@@ -2038,7 +2155,7 @@ public class DeploymentLoader implements DeploymentFilterable {
 
 
     private Map<String, URL> getDescriptors(final ClassLoader classLoader, final URL pathToScanDescriptors)
-        throws IOException {
+            throws IOException {
         final ResourceFinder finder = new ResourceFinder("", classLoader, pathToScanDescriptors);
 
         return altDDSources(mapDescriptors(finder), false);
@@ -2114,19 +2231,42 @@ public class DeploymentLoader implements DeploymentFilterable {
     }
 
     public static File unpack(final File jarFile) throws OpenEJBException {
+        return unpack(jarFile, jarFile.getName(), jarFile.getParentFile());
+    }
+
+    public static File extract(final File file, final String pathname, final File parentDir) throws IOException {
+
+        final Properties properties = SystemInstance.get().getProperties();
+        final String key = "tomee.unpack.dir";
+
+        File unpackDir = parentDir;
+
+        if (properties.containsKey(key)) {
+            final FileUtils base = SystemInstance.get().getBase();
+            unpackDir = base.getDirectory(properties.getProperty(key), true);
+        }
+
+        File docBase = new File(unpackDir, pathname);
+
+        docBase = JarExtractor.extract(file, docBase);
+        return docBase;
+    }
+
+    public static File unpack(final File jarFile, String name, final File parentDir) throws OpenEJBException {
         if (jarFile.isDirectory() || jarFile.getName().endsWith(".jar")) {
             return jarFile;
         }
 
-        String name = jarFile.getName();
         if (name.endsWith(".ear") || name.endsWith(".zip") || name.endsWith(".war") || name.endsWith(".rar")) {
             name = name.replaceFirst("....$", "");
+        } else if (name.endsWith(".vwar")) {
+            name = name.replaceFirst(".....$", "");
         } else {
             name += ".unpacked";
         }
 
         try {
-            return JarExtractor.extract(jarFile, name);
+            return extract(jarFile, name, parentDir);
         } catch (final Throwable e) {
             throw new OpenEJBException("Unable to extract jar. " + e.getMessage(), e);
         }

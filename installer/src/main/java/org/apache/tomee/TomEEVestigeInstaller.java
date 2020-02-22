@@ -35,6 +35,25 @@ public class TomEEVestigeInstaller {
             zipFile.closeEntry();
             entry = zipFile.getNextEntry();
         }
+        File apps = new File(base, "apps");
+        apps.mkdirs();
+        File entryDestination = new File(apps, "myear.vear");
+        OutputStream out = new FileOutputStream(entryDestination);
+        IOUtils.copy(TomEEVestigeInstaller.class.getResourceAsStream("/myear.vear"), out);
+        IOUtils.closeQuietly(out);
+
+        entryDestination = new File(apps, "mywar.vwar");
+        out = new FileOutputStream(entryDestination);
+        IOUtils.copy(TomEEVestigeInstaller.class.getResourceAsStream("/mywar.vwar"), out);
+        IOUtils.closeQuietly(out);
+
+        out = new FileOutputStream(new File(base, "conf" + File.separator + "server.xml"));
+        IOUtils.copy(TomEEVestigeInstaller.class.getResourceAsStream("/server.xml"), out);
+        IOUtils.closeQuietly(out);
+
+        out = new FileOutputStream(new File(base, "conf" + File.separator + "tomee.xml"));
+        IOUtils.copy(TomEEVestigeInstaller.class.getResourceAsStream("/tomee.xml"), out);
+        IOUtils.closeQuietly(out);
     }
 
 }

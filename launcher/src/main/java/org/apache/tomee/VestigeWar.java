@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.util.Collections;
 import java.util.List;
 
 import javax.xml.bind.JAXBContext;
@@ -18,10 +19,12 @@ import fr.gaellalire.vestige.spi.resolver.ResolvedClassLoaderConfiguration;
 import fr.gaellalire.vestige.spi.resolver.ResolverException;
 import fr.gaellalire.vestige.spi.resolver.Scope;
 import fr.gaellalire.vestige.spi.resolver.VestigeJar;
+import fr.gaellalire.vestige.spi.resolver.maven.CreateClassLoaderConfigurationRequest;
 import fr.gaellalire.vestige.spi.resolver.maven.MavenContext;
 import fr.gaellalire.vestige.spi.resolver.maven.MavenContextBuilder;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolveMavenArtifactRequest;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolveMode;
+import fr.gaellalire.vestige.spi.resolver.maven.ResolvedMavenArtifact;
 import fr.gaellalire.vestige.spi.resolver.maven.VestigeMavenResolver;
 import fr.gaellalire.vestige.vwar.AdditionalRepository;
 import fr.gaellalire.vestige.vwar.Application;
@@ -34,13 +37,18 @@ public class VestigeWar {
 
     private static ThreadLocal<VestigeMavenResolver> mavenResolver = new InheritableThreadLocal<>();
 
-    public static void init(VestigeMavenResolver mavenResolver) {
+    private static ThreadLocal<File> unpackDir = new InheritableThreadLocal<>();
+
+    public static void init(final VestigeMavenResolver mavenResolver, final File unpackDir) {
         VestigeWar.mavenResolver.set(mavenResolver);
+        VestigeWar.unpackDir.set(unpackDir);
     }
 
-    private ResolvedClassLoaderConfiguration classLoaderConfiguration;
+    public static File getUnpackDir() {
+        return unpackDir.get();
+    }
 
-    public static VestigeWar create(File vestigeWar, String baseName) {
+    public static VestigeWar create(final File vestigeWar, final String baseName) {
         Unmarshaller unMarshaller = null;
         try {
             JAXBContext jc = JAXBContext.newInstance(ObjectFactory.class.getPackage().getName());
@@ -76,15 +84,26 @@ public class VestigeWar {
                 }
 
                 MavenContext build = mavenContextBuilder.build();
-                ResolveMavenArtifactRequest request = build.resolve(ResolveMode.FIXED_DEPENDENCIES, Scope.PLATFORM, mavenResolver.getGroupId(), mavenResolver.getArtifactId(),
-                        mavenResolver.getVersion(), "war", "webapp-" + baseName);
-                ResolvedClassLoaderConfiguration classLoaderConfiguration;
+                ResolveMavenArtifactRequest request = build.resolve(mavenResolver.getGroupId(), mavenResolver.getArtifactId(), mavenResolver.getVersion());
+                request.setExtension("war");
+
+                ResolvedMavenArtifact resolvedMavenArtifact;
                 try {
-                    classLoaderConfiguration = request.execute(DummyJobHelper.INSTANCE);
+                    resolvedMavenArtifact = request.execute(DummyJobHelper.INSTANCE);
                 } catch (ResolverException e) {
                     throw new RuntimeException("Unable to fetch war", e);
                 }
-                return new VestigeWar(classLoaderConfiguration);
+                ResolvedClassLoaderConfiguration classLoaderConfiguration;
+                try {
+                    CreateClassLoaderConfigurationRequest createClassLoaderConfigurationRequest = resolvedMavenArtifact.createClassLoaderConfiguration("webapp-" + baseName,
+                            ResolveMode.FIXED_DEPENDENCIES, Scope.PLATFORM);
+                    createClassLoaderConfigurationRequest.setSelfExcluded(true);
+                    classLoaderConfiguration = createClassLoaderConfigurationRequest.execute();
+                } catch (ResolverException e) {
+                    throw new RuntimeException("Unable to fetch war", e);
+                }
+
+                return new VestigeWar(resolvedMavenArtifact.getVestigeJar(), classLoaderConfiguration);
             } finally {
                 inputStream.close();
             }
@@ -95,12 +114,21 @@ public class VestigeWar {
         }
     }
 
-    public VestigeWar(ResolvedClassLoaderConfiguration classLoaderConfiguration) {
-        this.classLoaderConfiguration = classLoaderConfiguration;
+    private VestigeJar vestigeWar;
+
+    private List<? extends VestigeJar> vestigeWarDependencies;
+
+    public VestigeWar(final VestigeJar vestigeWar, final ResolvedClassLoaderConfiguration classLoaderConfiguration) {
+        this.vestigeWar = vestigeWar;
+        vestigeWarDependencies = Collections.list(classLoaderConfiguration.getVestigeJarEnumeration());
     }
 
-    public VestigeJar getFirstVestigeJar() {
-        return classLoaderConfiguration.getFirstVestigeJar();
+    public VestigeJar getVestigeWar() {
+        return vestigeWar;
+    }
+
+    public List<? extends VestigeJar> getVestigeWarDependencies() {
+        return vestigeWarDependencies;
     }
 
 }

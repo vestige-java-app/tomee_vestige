@@ -347,6 +347,9 @@ public class DeploymentsResolver implements DeploymentFilterable {
             final String urlProtocol = url.getProtocol();
             //Currently, we only support jar and file protocol
             final boolean isValidURL = urlProtocol.equals("jar") || urlProtocol.equals("file");
+            if (urlProtocol.equals("vrt")) {
+                continue;
+            }
             if (!isValidURL) {
                 logger.warning("Unknown protocol " + urlProtocol);
                 continue;

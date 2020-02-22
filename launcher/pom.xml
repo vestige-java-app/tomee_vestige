@@ -135,7 +135,7 @@
     <dependency>
       <groupId>fr.gaellalire.vestige</groupId>
       <artifactId>vestige.spi.resolver.maven</artifactId>
-      <version>1.1</version>
+      <version>1.2-SNAPSHOT</version>
     </dependency>
 
   </dependencies>
@@ -153,7 +153,9 @@
             <configuration>
               <episodeFile>${project.build.directory}/generated-sources/xjc/META-INF/sun-jaxb-application.episode</episodeFile>
               <schemaIncludes>
-                <include>org/apache/tomcat/vwar-1.0.0.xsd</include>
+                <include>org/apache/tomee/vwar-1.0.0.xsd</include>
+                <include>org/apache/tomee/vear-1.0.0.xsd</include>
+                <include>org/apache/tomee/maven-ear-1.0.0.xsd</include>
               </schemaIncludes>
             </configuration>
           </execution>
