@@ -48,6 +48,9 @@ import org.apache.tomcat.util.buf.UriUtil;
 import org.apache.tomcat.util.http.RequestUtil;
 import org.apache.tomcat.util.res.StringManager;
 
+import fr.gaellalire.vestige.spi.resolver.VestigeJar;
+import fr.gaellalire.vestige.spi.resolver.VestigeJarEntry;
+
 /**
  * <p>
  * Provides the resources implementation for a web application. The
@@ -70,7 +73,8 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
     private boolean allowLinking = false;
     private final List<WebResourceSet> preResources = new ArrayList<>();
     private WebResourceSet main;
-    private final List<WebResourceSet> classResources = new ArrayList<>();
+
+    protected final List<WebResourceSet> classResources = new ArrayList<>();
     private final List<WebResourceSet> jarResources = new ArrayList<>();
     private final List<WebResourceSet> postResources = new ArrayList<>();
 
@@ -574,14 +578,26 @@ public class StandardRoot extends LifecycleMBeanBase implements WebResourceRoot 
      * getResource("/WEB-INF/classes") returning from one or more of the JAR
      * files.
      */
-    private void processWebInfLib() {
+    public void processWebInfLib() {
         WebResource[] possibleJars = listResources("/WEB-INF/lib", false);
 
         for (WebResource possibleJar : possibleJars) {
             if (possibleJar.isFile() && possibleJar.getName().endsWith(".jar")) {
-                createWebResourceSet(ResourceSetType.CLASSES_JAR, "/WEB-INF/classes", possibleJar.getURL(), "/");
+                if (possibleJar instanceof VestigeWebResource) {
+                    VestigeJarEntry vestigeJarEntry = ((VestigeWebResource) possibleJar).getVestigeJarEntry();
+                    if (vestigeJarEntry instanceof VestigeJarEntryFromVestigeJar) {
+                        VestigeJarEntryFromVestigeJar vestigeJarEntryFromVestigeJar = (VestigeJarEntryFromVestigeJar) vestigeJarEntry;
+                        classResources
+                                .add(new VestigeJarResourceSet(this, "/WEB-INF/classes", vestigeJarEntryFromVestigeJar.getVestigeJar(), Collections.<VestigeJar> emptyList(), "/"));
+                    } else {
+                        createWebResourceSet(ResourceSetType.CLASSES_JAR, "/WEB-INF/classes", possibleJar.getURL(), "/");
+                    }
+                } else {
+                    createWebResourceSet(ResourceSetType.CLASSES_JAR, "/WEB-INF/classes", possibleJar.getURL(), "/");
+                }
             }
         }
+
     }
 
     /**

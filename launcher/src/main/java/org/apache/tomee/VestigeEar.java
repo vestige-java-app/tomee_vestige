@@ -21,12 +21,17 @@ import javax.xml.validation.SchemaFactory;
 import fr.gaellalire.maven_ear.BundleMapping;
 import fr.gaellalire.maven_ear.MavenEAR;
 import fr.gaellalire.vestige.spi.job.DummyJobHelper;
+import fr.gaellalire.vestige.spi.resolver.ResolvedClassLoaderConfiguration;
 import fr.gaellalire.vestige.spi.resolver.ResolverException;
+import fr.gaellalire.vestige.spi.resolver.Scope;
 import fr.gaellalire.vestige.spi.resolver.VestigeJar;
 import fr.gaellalire.vestige.spi.resolver.VestigeJarEntry;
+import fr.gaellalire.vestige.spi.resolver.maven.CreateClassLoaderConfigurationRequest;
 import fr.gaellalire.vestige.spi.resolver.maven.MavenContext;
 import fr.gaellalire.vestige.spi.resolver.maven.MavenContextBuilder;
+import fr.gaellalire.vestige.spi.resolver.maven.ModifyDependencyRequest;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolveMavenArtifactRequest;
+import fr.gaellalire.vestige.spi.resolver.maven.ResolveMode;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolvedMavenArtifact;
 import fr.gaellalire.vestige.spi.resolver.maven.VestigeMavenResolver;
 import fr.gaellalire.vestige.vear.AdditionalRepository;
@@ -40,11 +45,13 @@ public class VestigeEar {
 
     private static ThreadLocal<VestigeMavenResolver> mavenResolver = new InheritableThreadLocal<>();
 
-    public static void init(VestigeMavenResolver mavenResolver) {
+    public static void init(final VestigeMavenResolver mavenResolver) {
         VestigeEar.mavenResolver.set(mavenResolver);
     }
 
-    public static VestigeEar create(File vestigeWar) {
+    private Map<File, List<? extends VestigeJar>> dependenciesByWar;
+
+    public static VestigeEar create(final File vestigeWar) {
         Unmarshaller unMarshaller = null;
         try {
             JAXBContext jc = JAXBContext.newInstance(ObjectFactory.class.getPackage().getName());
@@ -57,6 +64,9 @@ public class VestigeEar {
         } catch (Exception e) {
             throw new RuntimeException("Unable to initialize settings parser", e);
         }
+
+        Map<File, List<? extends VestigeJar>> dependenciesByWar = new HashMap<>();
+
         try {
             FileInputStream inputStream = new FileInputStream(vestigeWar);
             try {
@@ -84,27 +94,41 @@ public class VestigeEar {
 
                 resolve.setExtension("ear");
 
-                // ModifyDependencyRequest modifyEARDependency =
-                // vestigeMavenResolver.createMavenContextBuilder().addModifyDependency(groupId,
-                // artifactId);
+                ModifyDependencyRequest modifyEARDependency = VestigeEar.mavenResolver.get().createMavenContextBuilder().addModifyDependency(mavenResolver.getGroupId(),
+                        mavenResolver.getArtifactId());
 
                 ResolvedMavenArtifact resolvedMavenArtifact = resolve.execute(DummyJobHelper.INSTANCE);
-                Map<String, Map<String, VestigeJar>> jarByArtifactIdByGroupId = new HashMap<String, Map<String, VestigeJar>>();
+                Map<String, Map<String, URL>> jarByArtifactIdByGroupId = new HashMap<String, Map<String, URL>>();
                 List<ResolvedMavenArtifact> warResolvedMavenArtifacts = new ArrayList<>();
                 for (ResolvedMavenArtifact dependency : Collections.list(resolvedMavenArtifact.getDependencies())) {
-                    Map<String, VestigeJar> jarByArtifactId = jarByArtifactIdByGroupId.get(dependency.getGroupId());
+                    Map<String, URL> jarByArtifactId = jarByArtifactIdByGroupId.get(dependency.getGroupId());
                     if (jarByArtifactId == null) {
-                        jarByArtifactId = new HashMap<String, VestigeJar>();
+                        jarByArtifactId = new HashMap<String, URL>();
                         jarByArtifactIdByGroupId.put(dependency.getGroupId(), jarByArtifactId);
                     }
-                    jarByArtifactId.put(dependency.getArtifactId(), dependency.getVestigeJar());
 
+                    File file = dependency.getVestigeJar().getFile();
                     if ("war".equals(dependency.getExtension())) {
-                        // modifyEARDependency.removeDependency(dependency.getGroupId(),
-                        // dependency.getArtifactId(),
-                        // dependency.getExtension());
+                        modifyEARDependency.removeDependency(dependency.getGroupId(), dependency.getArtifactId(), dependency.getExtension());
                         warResolvedMavenArtifacts.add(dependency);
+
+                        ResolveMavenArtifactRequest resolveWar = build.resolve(dependency.getGroupId(), dependency.getArtifactId(), dependency.getVersion());
+                        resolveWar.setExtension("war");
+                        ResolvedMavenArtifact warResolvedMavenArtifact = resolveWar.execute(DummyJobHelper.INSTANCE);
+
+                        // unzip
+                        warResolvedMavenArtifact.getVestigeJar().getFile();
+
+                        // don't care about option, we will not attach the
+                        // classloader ATM
+                        CreateClassLoaderConfigurationRequest createClassLoaderConfigurationRequest = warResolvedMavenArtifact.createClassLoaderConfiguration("",
+                                ResolveMode.CLASSPATH, Scope.PLATFORM);
+                        createClassLoaderConfigurationRequest.setSelfExcluded(true);
+                        ResolvedClassLoaderConfiguration resolvedClassLoaderConfiguration = createClassLoaderConfigurationRequest.execute();
+
+                        dependenciesByWar.put(file, Collections.list(resolvedClassLoaderConfiguration.getVestigeJarEnumeration()));
                     }
+                    jarByArtifactId.put(dependency.getArtifactId(), file.toURI().toURL());
                 }
                 VestigeJar vestigeEAR = resolvedMavenArtifact.getVestigeJar();
 
@@ -124,12 +148,12 @@ public class VestigeEar {
                     }
                     mavenEAR = ((JAXBElement<MavenEAR>) unMarshaller.unmarshal(vestigeEAREntry.open())).getValue();
                 }
-                Map<String, VestigeJar> fileByName = new HashMap<String, VestigeJar>();
+                Map<String, URL> fileByName = new HashMap<String, URL>();
                 for (BundleMapping bundleMapping : mavenEAR.getBundleMapping()) {
                     fileByName.put(bundleMapping.getBundleFileName(), jarByArtifactIdByGroupId.get(bundleMapping.getGroupId()).get(bundleMapping.getArtifactId()));
                 }
 
-                return new VestigeEar(vestigeEAR, fileByName);
+                return new VestigeEar(vestigeEAR, fileByName, dependenciesByWar);
             } finally {
                 inputStream.close();
             }
@@ -144,15 +168,20 @@ public class VestigeEar {
 
     private VestigeJar vestigeJar;
 
-    private Map<String, VestigeJar> fileByName;
+    private Map<String, URL> fileByName;
 
-    public VestigeEar(VestigeJar vestigeJar, Map<String, VestigeJar> fileByName) {
+    public VestigeEar(final VestigeJar vestigeJar, final Map<String, URL> fileByName, final Map<File, List<? extends VestigeJar>> dependenciesByWar) {
         this.vestigeJar = vestigeJar;
         this.fileByName = fileByName;
+        this.dependenciesByWar = dependenciesByWar;
     }
 
-    public URL getURL(String file) throws MalformedURLException {
-        return fileByName.get(file).getFile().toURI().toURL();
+    public URL getURL(final String file) throws MalformedURLException {
+        return fileByName.get(file);
+    }
+
+    public List<? extends VestigeJar> getWarDependencies(final File file) {
+        return dependenciesByWar.get(file);
     }
 
     public VestigeJar getVestigeJar() {

@@ -399,10 +399,11 @@ public class DeploymentLoader implements DeploymentFilterable {
         Properties vestigeEARProperties = new Properties();
         final ClassLoader tmpClassLoader;
         boolean applicationFound = false;
+        final VestigeEar vestigeEar;
 
         if (jarFile.getName().endsWith(".vear")) {
             try {
-                final VestigeEar vestigeEar = VestigeEar.create(jarFile);
+                vestigeEar = VestigeEar.create(jarFile);
 
                 VestigeJar vestigeEarJar = vestigeEar.getVestigeJar();
 
@@ -449,6 +450,7 @@ public class DeploymentLoader implements DeploymentFilterable {
             }
 
         } else {
+            vestigeEar = null;
             appDir = unpack(jarFile);
             try {
                 appDir = appDir.getCanonicalFile();
@@ -709,7 +711,7 @@ public class DeploymentLoader implements DeploymentFilterable {
             for (final String moduleName : webModules.keySet()) {
                 try {
                     final URL warUrl = webModules.get(moduleName);
-                    addWebModule(appModule, warUrl, appClassLoader, webContextRoots.get(moduleName), null);
+                    addWebModule(appModule, warUrl, appClassLoader, webContextRoots.get(moduleName), null, vestigeEar);
                 } catch (final OpenEJBException e) {
                     logger.error("Unable to load WAR: " + appId + ", module: " + moduleName + ". Exception: " + e.getMessage(), e);
                 }
@@ -894,11 +896,12 @@ public class DeploymentLoader implements DeploymentFilterable {
     }
 
     private WebModule createWebModule(final String jar, final URL warUrl, final ClassLoader parentClassLoader, final String contextRoot, final String moduleName, final ExternalConfiguration config) throws OpenEJBException {
-        return createWebModule(jar, URLs.toFilePath(warUrl), parentClassLoader, contextRoot, moduleName, config);
+        return createWebModule(jar, URLs.toFilePath(warUrl), parentClassLoader, contextRoot, moduleName, config, null);
     }
 
-    public void addWebModule(final AppModule appModule, final URL warUrl, final ClassLoader parentClassLoader, final String contextRoot, final String moduleName) throws OpenEJBException {
-        final WebModule webModule = createWebModule(appModule.getJarLocation(), URLs.toFilePath(warUrl), parentClassLoader, contextRoot, moduleName, null);
+    public void addWebModule(final AppModule appModule, final URL warUrl, final ClassLoader parentClassLoader, final String contextRoot, final String moduleName,
+            final VestigeEar vestigeEar) throws OpenEJBException {
+        final WebModule webModule = createWebModule(appModule.getJarLocation(), URLs.toFilePath(warUrl), parentClassLoader, contextRoot, moduleName, null, vestigeEar);
         addWebModule(webModule, appModule);
     }
 
@@ -1014,15 +1017,20 @@ public class DeploymentLoader implements DeploymentFilterable {
 
     }
 
-    public WebModule createWebModule(final String appId, final String warPath, final ClassLoader parentClassLoader, final String contextRoot, final String moduleName, final ExternalConfiguration config) throws OpenEJBException {
+    public WebModule createWebModule(final String appId, final String warPath, final ClassLoader parentClassLoader, final String contextRoot, final String moduleName,
+            final ExternalConfiguration config, final VestigeEar vestigeEar) throws OpenEJBException {
         final Map<String, URL[]> urls;
+        List<? extends VestigeJar> vestigeWarDependencies = null;
         File warFile = new File(warPath);
         if (warFile.getName().endsWith(".vwar")) {
             try {
-                final VestigeWar vestigeEar = VestigeWar.create(warFile, warFile.getName());
+                final VestigeWar vestigeWar = VestigeWar.create(warFile, warFile.getName());
 
-                VestigeJar vestigeWarJar = vestigeEar.getVestigeWar();
+                VestigeJar vestigeWarJar = vestigeWar.getVestigeWar();
+                // data/apps/myear/war1.vwar dynamically created ?
 
+                // unpack in data/apps/mywar/WEB-INF
+                // unpack in data/apps/myear/war1/WEB-INF
                 warFile = unpack(vestigeWarJar.getFile(), warFile.getName(), VestigeWar.getUnpackDir());
 
                 final Set<URL> webClassPath = new HashSet<URL>();
@@ -1030,7 +1038,38 @@ public class DeploymentLoader implements DeploymentFilterable {
 
                 webClassPath.add(new File(new File(warFile, "WEB-INF"), "classes").toURI().toURL());
 
-                List<? extends VestigeJar> vestigeWarDependencies = vestigeEar.getVestigeWarDependencies();
+                vestigeWarDependencies = vestigeWar.getVestigeWarDependencies();
+                for (VestigeJar vestigeJar : vestigeWarDependencies) {
+                    if (vestigeJar.getName().endsWith(".rar")) {
+                        webRars.add(vestigeJar.getFile().toURI().toURL());
+                    } else {
+                        webClassPath.add(vestigeJar.getFile().toURI().toURL());
+                    }
+                }
+
+                final WebAppEnricher enricher = SystemInstance.get().getComponent(WebAppEnricher.class);
+                if (enricher != null) {
+                    webClassPath.addAll(Arrays.asList(enricher.enrichment(null)));
+                }
+
+                urls = new HashMap<String, URL[]>();
+                urls.put(URLS_KEY, webClassPath.toArray(new URL[webClassPath.size()]));
+                urls.put(RAR_URLS_KEY, webRars.toArray(new URL[webRars.size()]));
+            } catch (Exception e) {
+                throw new OpenEJBException(e);
+            }
+        } else if (vestigeEar != null) {
+            try {
+                // war inside vestige EAR
+                vestigeWarDependencies = vestigeEar.getWarDependencies(warFile);
+
+                warFile = unpack(warFile, warFile.getName(), VestigeWar.getUnpackDir());
+
+                final Set<URL> webClassPath = new HashSet<URL>();
+                final Set<URL> webRars = new HashSet<URL>();
+
+                webClassPath.add(new File(new File(warFile, "WEB-INF"), "classes").toURI().toURL());
+
                 for (VestigeJar vestigeJar : vestigeWarDependencies) {
                     if (vestigeJar.getName().endsWith(".rar")) {
                         webRars.add(vestigeJar.getFile().toURI().toURL());
@@ -1158,7 +1197,7 @@ public class DeploymentLoader implements DeploymentFilterable {
         // executable war will add war in scannable urls, we don't want it since it will surely contain tomee, cxf, ...
         if (Boolean.parseBoolean(systemInstance.getProperty("openejb.core.skip-war-in-loader", "true"))) {
             File archive = warFile;
-            if (!archive.getName().endsWith(".war")) {
+            if (!archive.getName().endsWith(".war") && vestigeEar == null) {
                 archive = new File(warFile.getParentFile(), warFile.getName() + ".war");
                 final String unpackDir = systemInstance.getProperty("tomee.unpack.dir");
                 if (unpackDir != null && !archive.isFile()) {
@@ -1209,6 +1248,12 @@ public class DeploymentLoader implements DeploymentFilterable {
         addFacesConfigs(webModule);
 
         addBeansXmls(webModule);
+
+        // new VestigeJarResourceSet(this, "/WEB-INF/classes",
+        // vestigeJarEntryFromVestigeJar.getVestigeJar(),
+        // Collections.<VestigeJar>emptyList(), "/");
+
+        webModule.setVestigeWarDependencies(vestigeWarDependencies);
 
         return webModule;
     }

@@ -10,6 +10,7 @@ import java.util.List;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBElement;
 import javax.xml.bind.JAXBException;
+import javax.xml.bind.Marshaller;
 import javax.xml.bind.Unmarshaller;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
@@ -46,6 +47,26 @@ public class VestigeWar {
 
     public static File getUnpackDir() {
         return unpackDir.get();
+    }
+
+    public static Marshaller getMarshaller() {
+        Marshaller marshaller = null;
+        try {
+            JAXBContext jc = JAXBContext.newInstance(ObjectFactory.class.getPackage().getName());
+            marshaller = jc.createMarshaller();
+
+            URL xsdURL = VestigeWar.class.getResource("vwar-1.0.0.xsd");
+            SchemaFactory schemaFactory = SchemaFactory.newInstance("http://www.w3.org/2001/XMLSchema");
+            Schema schema = schemaFactory.newSchema(xsdURL);
+            marshaller.setSchema(schema);
+        } catch (Exception e) {
+            throw new RuntimeException("Unable to initialize settings parser", e);
+        }
+        return marshaller;
+    }
+
+    public static void createApplication(final String groupId, final String artifactId) {
+
     }
 
     public static VestigeWar create(final File vestigeWar, final String baseName) {
