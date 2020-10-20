@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" xmlns:tns="http://gaellalire.fr/vestige/VEAR" xmlns="http://gaellalire.fr/vestige/VEAR"
-  targetNamespace="http://gaellalire.fr/vestige/VEAR" version="1.0.0">
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" xmlns:tns="http://tomee.apache.org/VEAR" xmlns="http://tomee.apache.org/VEAR"
+  targetNamespace="http://tomee.apache.org/VEAR" version="1.0.0">
   <xs:element name="application" type="Application">
     <xs:annotation>
       <xs:documentation source="version">1.0.0</xs:documentation>

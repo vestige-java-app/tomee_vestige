@@ -34,12 +34,12 @@ import fr.gaellalire.vestige.spi.resolver.maven.ResolveMavenArtifactRequest;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolveMode;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolvedMavenArtifact;
 import fr.gaellalire.vestige.spi.resolver.maven.VestigeMavenResolver;
-import fr.gaellalire.vestige.vear.AdditionalRepository;
-import fr.gaellalire.vestige.vear.Application;
-import fr.gaellalire.vestige.vear.Config;
-import fr.gaellalire.vestige.vear.MavenClassType;
-import fr.gaellalire.vestige.vear.MavenConfig;
-import fr.gaellalire.vestige.vear.ObjectFactory;
+import org.apache.tomee.vear.AdditionalRepository;
+import org.apache.tomee.vear.Application;
+import org.apache.tomee.vear.Config;
+import org.apache.tomee.vear.MavenClassType;
+import org.apache.tomee.vear.MavenConfig;
+import org.apache.tomee.vear.ObjectFactory;
 
 public class VestigeEar {
 
