@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" xmlns:tns="http://gaellalire.fr/MAVEN_EAR" xmlns="http://gaellalire.fr/MAVEN_EAR"
-  targetNamespace="http://gaellalire.fr/MAVEN_EAR" version="1.0.0">
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" xmlns:tns="http://maven.apache.org/MAVEN_EAR" xmlns="http://maven.apache.org/MAVEN_EAR"
+  targetNamespace="http://maven.apache.org/MAVEN_EAR" version="1.0.0">
   <xs:element name="mavenEAR" type="MavenEAR">
     <xs:annotation>
       <xs:documentation source="version">1.0.0</xs:documentation>

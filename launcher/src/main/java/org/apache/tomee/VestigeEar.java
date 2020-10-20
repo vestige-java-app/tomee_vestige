@@ -18,8 +18,15 @@ import javax.xml.bind.Unmarshaller;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
 
-import fr.gaellalire.maven_ear.BundleMapping;
-import fr.gaellalire.maven_ear.MavenEAR;
+import org.apache.maven.maven_ear.BundleMapping;
+import org.apache.maven.maven_ear.MavenEAR;
+import org.apache.tomee.vear.AdditionalRepository;
+import org.apache.tomee.vear.Application;
+import org.apache.tomee.vear.Config;
+import org.apache.tomee.vear.MavenClassType;
+import org.apache.tomee.vear.MavenConfig;
+import org.apache.tomee.vear.ObjectFactory;
+
 import fr.gaellalire.vestige.spi.job.DummyJobHelper;
 import fr.gaellalire.vestige.spi.resolver.ResolvedClassLoaderConfiguration;
 import fr.gaellalire.vestige.spi.resolver.ResolverException;
@@ -34,12 +41,6 @@ import fr.gaellalire.vestige.spi.resolver.maven.ResolveMavenArtifactRequest;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolveMode;
 import fr.gaellalire.vestige.spi.resolver.maven.ResolvedMavenArtifact;
 import fr.gaellalire.vestige.spi.resolver.maven.VestigeMavenResolver;
-import org.apache.tomee.vear.AdditionalRepository;
-import org.apache.tomee.vear.Application;
-import org.apache.tomee.vear.Config;
-import org.apache.tomee.vear.MavenClassType;
-import org.apache.tomee.vear.MavenConfig;
-import org.apache.tomee.vear.ObjectFactory;
 
 public class VestigeEar {
 
@@ -136,7 +137,7 @@ public class VestigeEar {
                 VestigeJarEntry vestigeEAREntry = vestigeEAR.getEntry("META-INF/maven-ear.xml");
                 if (vestigeEAREntry != null) {
                     try {
-                        JAXBContext jc = JAXBContext.newInstance(fr.gaellalire.maven_ear.ObjectFactory.class.getPackage().getName());
+                        JAXBContext jc = JAXBContext.newInstance(org.apache.maven.maven_ear.ObjectFactory.class.getPackage().getName());
                         unMarshaller = jc.createUnmarshaller();
 
                         URL xsdURL = VestigeEar.class.getResource("maven-ear-1.0.0.xsd");
